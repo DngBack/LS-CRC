@@ -1,69 +1,90 @@
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
+import segmentation_models_pytorch as smp
 
-class SimpleUNet(nn.Module):
+
+def _decoder_out_channels(model) -> int:
+    """Infer channel dimension of decoder output (input to segmentation head)."""
+    was_training = model.training
+    model.eval()
+    with torch.no_grad():
+        # Large enough spatial size so low-resolution heads (e.g. DeepLab ASPP) are not 1x1 (avoids BN issues).
+        x = torch.zeros(1, 3, 512, 512)
+        feats = model.encoder(x)
+        dec = model.decoder(feats)
+    if was_training:
+        model.train()
+    return int(dec.shape[1])
+
+
+class SMPUNetWrapper(nn.Module):
     """
-    Robust lightweight U-Net architecture.
+    U-Net with configurable encoder (default ResNet-50, ImageNet pre-trained).
     """
-    def __init__(self, in_channels=3, out_channels=1, features=[32, 64, 128, 256]):
+
+    def __init__(self, encoder_name='resnet50', encoder_weights='imagenet', in_channels=3, classes=1):
         super().__init__()
-        self.downs = nn.ModuleList()
-        self.ups = nn.ModuleList()
-        self.pool = nn.MaxPool2d(kernel_size=2, stride=2)
-        
-        # Down part
-        for feature in features:
-            self.downs.append(self._double_conv(in_channels, feature))
-            in_channels = feature
-            
-        # Bottleneck
-        self.bottleneck = self._double_conv(features[-1], features[-1]*2)
-        
-        # Up part
-        for feature in reversed(features):
-            self.ups.append(nn.ConvTranspose2d(feature*2, feature, kernel_size=2, stride=2))
-            self.ups.append(self._double_conv(feature*2, feature))
-            
-        self.final_conv = nn.Conv2d(features[0], out_channels, kernel_size=1)
-
-    def _double_conv(self, in_channels, out_channels):
-        return nn.Sequential(
-            nn.Conv2d(in_channels, out_channels, kernel_size=3, padding=1, bias=False),
-            nn.BatchNorm2d(out_channels),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(out_channels, out_channels, kernel_size=3, padding=1, bias=False),
-            nn.BatchNorm2d(out_channels),
-            nn.ReLU(inplace=True),
+        self.model = smp.Unet(
+            encoder_name=encoder_name,
+            encoder_weights=encoder_weights,
+            in_channels=in_channels,
+            classes=classes,
         )
+        self.feature_channels = _decoder_out_channels(self.model)
 
     def forward(self, x):
-        skip_connections = []
-        for down in self.downs:
-            x = down(x)
-            skip_connections.append(x)
-            x = self.pool(x)
-            
-        x = self.bottleneck(x)
-        features_to_return = x # The deepest features, or we can return the layer before final_conv
-
-        skip_connections = skip_connections[::-1]
-        for idx in range(0, len(self.ups), 2):
-            x = self.ups[idx](x)
-            skip_connection = skip_connections[idx//2]
-            if x.shape != skip_connection.shape:
-                x = F.interpolate(x, size=skip_connection.shape[2:], mode='bilinear', align_corners=True)
-            x = torch.cat((skip_connection, x), dim=1)
-            x = self.ups[idx+1](x)
-            
-        h_theta = x  # The feature map before the final layer (channels = features[0])
-        logits = self.final_conv(x)
+        features = self.model.encoder(x)
+        decoder_output = self.model.decoder(features)
+        logits = self.model.segmentation_head(decoder_output)
         prob = torch.sigmoid(logits)
-        
-        return logits, prob, h_theta
+        return logits, prob, decoder_output
 
-def get_backbone(model_name='unet'):
+
+class SMPDeepLabV3PlusWrapper(nn.Module):
+    """
+    DeepLabV3+ with configurable encoder; decoder output feeds Rejector like U-Net.
+    """
+
+    def __init__(self, encoder_name='resnet50', encoder_weights='imagenet', in_channels=3, classes=1):
+        super().__init__()
+        self.model = smp.DeepLabV3Plus(
+            encoder_name=encoder_name,
+            encoder_weights=encoder_weights,
+            in_channels=in_channels,
+            classes=classes,
+        )
+        self.feature_channels = _decoder_out_channels(self.model)
+
+    def forward(self, x):
+        features = self.model.encoder(x)
+        decoder_output = self.model.decoder(features)
+        logits = self.model.segmentation_head(decoder_output)
+        prob = torch.sigmoid(logits)
+        return logits, prob, decoder_output
+
+
+def get_backbone(
+    model_name='unet',
+    encoder_name='resnet50',
+    encoder_weights='imagenet',
+    in_channels=3,
+    classes=1,
+):
+    """
+    Args:
+        model_name: 'unet' or 'deeplabv3plus'.
+        encoder_name: SMP encoder (e.g. resnet50).
+        encoder_weights: 'imagenet' or None for random init.
+        in_channels / classes: passed to SMP.
+    """
+    kwargs = dict(
+        encoder_name=encoder_name,
+        encoder_weights=encoder_weights,
+        in_channels=in_channels,
+        classes=classes,
+    )
     if model_name == 'unet':
-        return SimpleUNet()
-    else:
-        raise NotImplementedError(f"Backbone {model_name} is not implemented here. You can hook up a torchvision DeepLabV3+ with custom forward.")
+        return SMPUNetWrapper(**kwargs)
+    if model_name in ('deeplabv3plus', 'deeplabv3+'):
+        return SMPDeepLabV3PlusWrapper(**kwargs)
+    raise NotImplementedError(f"Backbone {model_name} is not implemented.")
