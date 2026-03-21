@@ -7,3 +7,4 @@ tqdm>=4.65.0
 scipy>=1.9.0
 matplotlib>=3.5.0
 datasets>=2.14.0
+segmentation-models-pytorch>=0.3.3

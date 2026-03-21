@@ -20,7 +20,29 @@ class MedicalSegmentationDataset(Dataset):
         # Load from split file if provided
         if split_file and os.path.exists(split_file):
             with open(split_file, 'r') as f:
-                self.filenames = [line.strip() for line in f.readlines() if line.strip()]
+                raw = [line.strip() for line in f.readlines() if line.strip()]
+            images_dir = os.path.join(root_dir, "images")
+            masks_dir = os.path.join(root_dir, "masks")
+            valid = []
+            for name in raw:
+                img_path = os.path.join(images_dir, name)
+                mask_path = os.path.join(masks_dir, name)
+                if not os.path.exists(mask_path):
+                    mask_path = mask_path.replace(".jpg", ".png")
+                if os.path.isfile(img_path) and os.path.isfile(mask_path):
+                    valid.append(name)
+            if len(valid) < len(raw):
+                n_skip = len(raw) - len(valid)
+                print(
+                    f"Warning: {root_dir} ({os.path.basename(split_file)}): "
+                    f"skipping {n_skip} entries with missing image/mask on disk."
+                )
+            self.filenames = valid
+            if not self.filenames:
+                raise FileNotFoundError(
+                    f"No image/mask pairs found for split file {split_file}. "
+                    f"Regenerate splits: python download_data.py --regenerate-splits {root_dir}"
+                )
         else:
             self.filenames = os.listdir(os.path.join(root_dir, "images"))
 

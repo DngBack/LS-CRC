@@ -1,5 +1,7 @@
 # LS-CRC Implementation Report (Version 1.1)
 
+> **Bản hiện tại:** xem [report_v1.2.md](report_v1.2.md) (CLI, eval đa scenario, split dữ liệu) và [guide_improvements_v1.2.md](guide_improvements_v1.2.md).
+
 **Project Name:** Localized Selective Conformal Risk Control (LS-CRC) for Medical Image Segmentation
 **Version:** 1.1 - Baseline Integration & End-to-End Pipeline
 **Status:** Pipeline Established, Integration Test Passed
@@ -43,9 +45,11 @@ Max-Softmax Threshold 0.74693  0.735371       0.057482  0.158866   0.189238  0.4
 
 ## 3. Lộ trình Triển khai Tiếp theo (Next Steps)
 
-Để hoàn thiện và đạt được kết quả chuẩn xác nhất giống như trong bài báo gốc, đây là **Next Steps**:
+Các bước dưới đây đã được **tích hợp vào CLI**; siêu tham số huấn luyện ($\lambda_2$, $\lambda_3$, learning rate, epochs) điều chỉnh qua **`train.py`**, không nằm trong `utils/losses.py` (file đó chỉ định nghĩa hàm loss).
 
-1. **Tăng Epochs lên kích thước thực tế**: Vào `train.py` để tăng số batch/epochs (VD: Backbone train 100 epochs, Rejector 50 epochs). Để train cực lâu anh sẽ cần một GPU mạnh dạn.
-2. **Sử dụng Pre-trained Models**: Kết nối U-Net (hoặc DeepLabV3+) với Encoder như ResNet-50 có pretrained weights trên ImageNet thay vì khởi tạo ngẫu nhiên, để đẩy Dice gốc > 0.90 ngay lập tức.
-3. **Hyperparameter Tuning**: Đẩy trọng số $\lambda_2$ (Smoothness) và $\lambda_3$ (Surrogate Risk). Tăng cường sức mạnh liên tiếp bằng cách tuning learning rate của file `losses.py`.
-4. **Đánh giá Chéo Dataset**: Khởi chạy `evaluate.py` kết xuất các bảng thống kê cho tập dữ liệu thứ 2 là `CVC-ClinicDB` để đánh giá tính bền vững ngoại vi (Robustness).
+1. **Tăng Epochs**: Chạy `python train.py` với `--epochs-backbone`, `--epochs-rejector`, `--epochs-joint` (mặc định 100 / 50 / 50). Có thể chỉnh `--data-root`, `--batch-size`. Huấn luyện dài nên dùng GPU đủ mạnh.
+2. **Pre-trained & kiến trúc**: `models/backbone.py` hỗ trợ U-Net hoặc DeepLabV3+ qua `--backbone unet|deeplabv3plus`, `--encoder-name` (mặc định `resnet50`), `--encoder-weights imagenet` hoặc `none`. `Rejector` tự lấy số kênh từ đầu ra decoder.
+3. **Hyperparameter tuning**: $\lambda_2$ (smoothness) → `--lambda-smooth`; $\lambda_3$ (surrogate) → `--lambda-surrogate`; learning rate từng giai đoạn → `--lr-backbone`, `--lr-rejector`, `--lr-joint`.
+4. **Đánh giá & chéo dataset**: `python evaluate.py` mặc định hiệu chỉnh và test trên `data/CVC-ClinicDB`. Để **cal trên tập A, test trên tập B**, dùng `--scenario 'Nhãn,cal_root,test_root'` (lặp lại nhiều lần cho nhiều bảng). Ví dụ chuẩn hóa trên Kvasir rồi đo trên CVC:  
+   `--scenario 'Cross-Kvasir-cal-CVC-test,data/Kvasir-SEG,data/CVC-ClinicDB'`  
+   Xuất CSV: `--results-csv results.csv`. Checkpoint: `--checkpoint-dir`.

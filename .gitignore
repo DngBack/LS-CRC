@@ -75,6 +75,12 @@ docs/_build/
 .pybuilder/
 target/
 
+# Trained weights (large binaries; keep locally or use release artifacts)
+checkpoints/*.pth
+
+# Local experiment exports
+experiments_full.csv
+
 # Jupyter Notebook
 .ipynb_checkpoints
 
