@@ -45,7 +45,7 @@ def download_and_save(dataset_name, split, output_dir):
     return len(ds)
 
 
-def generate_splits(output_dir, n_train, n_val, n_cal, n_total, min_test_frac=0.10):
+def generate_splits(output_dir, n_train, n_val, n_cal, n_total, min_test_frac=0.10, split_seed=42):
     import random
 
     if n_total < 4:
@@ -70,7 +70,7 @@ def generate_splits(output_dir, n_train, n_val, n_cal, n_total, min_test_frac=0.
             )
 
     indices = list(range(n_total))
-    random.seed(42)
+    random.seed(split_seed)
     random.shuffle(indices)
 
     train_idx = indices[:n_train]
@@ -93,7 +93,7 @@ def generate_splits(output_dir, n_train, n_val, n_cal, n_total, min_test_frac=0.
     )
 
 
-def regenerate_splits_from_disk(output_dir, n_train=400, n_val=50, n_cal=50):
+def regenerate_splits_from_disk(output_dir, n_train=400, n_val=50, n_cal=50, split_seed=42):
     """
     Rebuild train/val/cal/test txt files from whatever images exist in output_dir/images.
     Use this if splits were generated with a wrong n_total (missing files on disk).
@@ -110,7 +110,7 @@ def regenerate_splits_from_disk(output_dir, n_train=400, n_val=50, n_cal=50):
     )
     if n_total < 4:
         raise ValueError(f"Need at least 4 images in {img_dir}, found {n_total}")
-    generate_splits(output_dir, n_train, n_val, n_cal, n_total)
+    generate_splits(output_dir, n_train, n_val, n_cal, n_total, split_seed=split_seed)
 
 
 if __name__ == "__main__":
@@ -126,6 +126,12 @@ if __name__ == "__main__":
     parser.add_argument("--train", type=int, default=None, help="Train count for --regenerate-splits (default: 400 or 500 for Kvasir-sized dirs).")
     parser.add_argument("--val", type=int, default=50, help="Val count for --regenerate-splits.")
     parser.add_argument("--cal", type=int, default=50, help="Cal count for --regenerate-splits.")
+    parser.add_argument(
+        "--split-seed",
+        type=int,
+        default=42,
+        help="RNG seed when shuffling indices for train/val/cal/test (--reg only).",
+    )
     args = parser.parse_args()
 
     if args.regenerate_splits:
@@ -133,7 +139,9 @@ if __name__ == "__main__":
             nt = args.train
             if nt is None:
                 nt = 500 if "Kvasir" in root else 400
-            regenerate_splits_from_disk(root, n_train=nt, n_val=args.val, n_cal=args.cal)
+            regenerate_splits_from_disk(
+                root, n_train=nt, n_val=args.val, n_cal=args.cal, split_seed=args.split_seed
+            )
     else:
         try:
             n_kv = download_and_save("kowndinya23/Kvasir-SEG", "train", "data/Kvasir-SEG")

@@ -3,7 +3,6 @@ from PIL import Image
 import numpy as np
 import torch
 from torch.utils.data import Dataset
-import torchvision.transforms as T
 import torch.nn.functional as F
 
 class MedicalSegmentationDataset(Dataset):
@@ -48,7 +47,9 @@ class MedicalSegmentationDataset(Dataset):
 
         self.images_dir = os.path.join(self.root_dir, "images")
         self.masks_dir = os.path.join(self.root_dir, "masks")
-        
+
+        import torchvision.transforms as T
+
         # Standard preprocessing
         self.img_transform = T.Compose([
             T.Resize(self.img_size),
@@ -158,16 +159,36 @@ class SyntheticMedicalDataset(Dataset):
         
         return image, mask, {'size': size_tag, 'complexity': 0}, f"synth_{idx}"
 
-def get_dataloader(root_dir, batch_size=8, split='train', img_size=(256,256), num_workers=4):
-    """Factory function for dataloaders."""
-    is_train = (split == 'train')
-    
+def get_dataloader(
+    root_dir,
+    batch_size=8,
+    split="train",
+    img_size=(256, 256),
+    num_workers=4,
+    seed=None,
+):
+    """Factory function for dataloaders. If seed is set and split is train, shuffle is reproducible."""
+    is_train = split == "train"
+
     if os.path.exists(root_dir):
         split_file = os.path.join(root_dir, f"{split}.txt")
-        dataset = MedicalSegmentationDataset(root_dir, split_file=split_file, img_size=img_size, is_train=is_train)
+        dataset = MedicalSegmentationDataset(
+            root_dir, split_file=split_file, img_size=img_size, is_train=is_train
+        )
     else:
         print(f"Warning: Directory {root_dir} not found. Returning SYNTHETIC dataset for {split} split!")
-        samples = {'train': 600, 'val': 100, 'cal': 150, 'test': 150}.get(split, 100)
+        samples = {"train": 600, "val": 100, "cal": 150, "test": 150}.get(split, 100)
         dataset = SyntheticMedicalDataset(samples, img_size=img_size, is_train=is_train)
-        
-    return torch.utils.data.DataLoader(dataset, batch_size=batch_size, shuffle=is_train, num_workers=num_workers)
+
+    gen = None
+    if is_train and seed is not None:
+        gen = torch.Generator()
+        gen.manual_seed(int(seed))
+
+    return torch.utils.data.DataLoader(
+        dataset,
+        batch_size=batch_size,
+        shuffle=is_train,
+        num_workers=num_workers,
+        generator=gen,
+    )

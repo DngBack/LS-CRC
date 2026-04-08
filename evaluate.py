@@ -5,7 +5,6 @@ import numpy as np
 import pandas as pd
 import torch
 from calibrate import calibrate_threshold
-from data.dataset import get_dataloader
 from models.backbone import get_backbone
 from models.rejector import Rejector
 from utils.losses import compute_spatial_weight_map, get_localized_selective_loss_components
@@ -105,7 +104,10 @@ def _run_one_scenario(
     num_workers,
     alpha,
     experiments,
+    calibration_num_thresholds,
 ):
+    from data.dataset import get_dataloader
+
     cal_loader = get_dataloader(cal_root, split="cal", batch_size=batch_size, num_workers=num_workers)
     test_loader = get_dataloader(test_root, split="test", batch_size=batch_size, num_workers=num_workers)
     results = []
@@ -116,7 +118,13 @@ def _run_one_scenario(
         method = exp["method"]
         if exp["requires_cal"]:
             tau_star, _, _ = calibrate_threshold(
-                backbone, rejector if method == "lscrc" else None, cal_loader, device, alpha, method=method
+                backbone,
+                rejector if method == "lscrc" else None,
+                cal_loader,
+                device,
+                alpha,
+                method=method,
+                num_thresholds=calibration_num_thresholds,
             )
             print(f"[{name}] Calibrated tau* = {tau_star:.3f}")
         else:
@@ -170,6 +178,12 @@ def parse_args():
     p.add_argument("--batch-size", type=int, default=8)
     p.add_argument("--num-workers", type=int, default=4)
     p.add_argument("--alpha", type=float, default=0.05, help="Risk budget for calibration.")
+    p.add_argument(
+        "--calibration-num-thresholds",
+        type=int,
+        default=500,
+        help="Grid size for tau in [0.01, 0.99] during calibration (higher = finer, slower).",
+    )
     p.add_argument("--backbone", type=str, default="unet", choices=["unet", "deeplabv3plus"])
     p.add_argument("--encoder-name", type=str, default="resnet50")
     p.add_argument(
@@ -238,6 +252,7 @@ def run_experiments(args=None):
             args.num_workers,
             args.alpha,
             experiments,
+            args.calibration_num_thresholds,
         )
         out = df.copy()
         out.insert(0, "Dataset", label)
