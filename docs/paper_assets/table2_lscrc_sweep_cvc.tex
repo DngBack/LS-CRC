@@ -1,0 +1,17 @@
+% Table 2: LS-CRC sensitivity to alpha on CVC-ClinicDB in-domain scenario
+
+\begin{table}[t]
+  \centering
+  \caption{Sensitivity of LS-CRC to the risk budget $\alpha$ on CVC-ClinicDB (calibration and test both on CVC). Discrete threshold grid can cause plateaus (e.g.\ $\alpha=0.05$ vs.\ $0.10$) and a floor effect at large $\alpha$ (accept-all behavior at $\tau\!=\!0.01$).}
+  \label{tab:lscrc-sweep-cvc}
+  \begin{tabular}{@{}ccccc@{}}
+    \toprule
+    $\alpha$ & $\tau^\star$ & Coverage & Exp.\ risk & Note \\
+    \midrule
+    0.01 & 0.999 & 0.034 & $\approx$0 & near-trivial acceptance \\
+    0.05 & 0.525 & 0.878 & 0.0127 & stable operating point \\
+    0.10 & 0.525 & 0.878 & 0.0127 & same as $\alpha=0.05$ \\
+    0.15 & 0.010 & 1.000 & 0.110 & accept all (grid floor) \\
+    \bottomrule
+  \end{tabular}
+\end{table}

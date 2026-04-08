@@ -1,0 +1,39 @@
+% Table 1: Main results at risk budget alpha = 0.05
+% Requires: \usepackage{booktabs} \usepackage{multirow}
+% Adjust \label and caption for your paper.
+
+\begin{table*}[t]
+  \centering
+  \caption{Segmentation quality (Dice) is identical across selective methods since the same backbone probabilities are used. Coverage and localized expected risk are computed on the test split; thresholds are calibrated on the calibration split of each scenario. Checkpoint: CVC-adapted U-Net (ResNet-50, ImageNet).}
+  \label{tab:main-alpha005}
+  \small
+  \begin{tabular}{@{}llccc@{}}
+    \toprule
+    Scenario & Method & Dice & Coverage & Exp.\ risk \\
+    \midrule
+    \multirow{4}{*}{Kvasir ID}
+      & Plain & 0.819 & 1.000 & 0.118 \\
+      & Entropy & 0.819 & 0.947 & 0.071 \\
+      & Max-softmax & 0.819 & 0.948 & 0.071 \\
+      & \textbf{LS-CRC (ours)} & \textbf{0.819} & \textbf{0.805} & \textbf{0.028} \\
+    \midrule
+    \multirow{4}{*}{CVC ID}
+      & Plain & 0.870 & 1.000 & 0.110 \\
+      & Entropy & 0.870 & 0.925 & 0.027 \\
+      & Max-softmax & 0.870 & 0.921 & 0.025 \\
+      & \textbf{LS-CRC (ours)} & \textbf{0.870} & \textbf{0.878} & \textbf{0.013} \\
+    \midrule
+    \multirow{4}{*}{Cross Kvasir$\rightarrow$CVC}
+      & Plain & 0.870 & 1.000 & 0.110 \\
+      & Entropy & 0.870 & 0.970 & 0.068 \\
+      & Max-softmax & 0.870 & 0.970 & 0.068 \\
+      & \textbf{LS-CRC (ours)} & \textbf{0.870} & \textbf{0.878} & \textbf{0.013} \\
+    \midrule
+    \multirow{4}{*}{Cross CVC$\rightarrow$Kvasir}
+      & Plain & 0.819 & 1.000 & 0.118 \\
+      & Entropy & 0.819 & 0.869 & 0.034 \\
+      & Max-softmax & 0.819 & 0.861 & 0.033 \\
+      & \textbf{LS-CRC (ours)} & \textbf{0.819} & \textbf{0.805} & \textbf{0.028} \\
+    \bottomrule
+  \end{tabular}
+\end{table*}

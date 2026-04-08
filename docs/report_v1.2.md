@@ -21,7 +21,9 @@
 
 - [report_v1.1.md](report_v1.1.md) — báo cáo nền & kiến trúc (v1.1).  
 - [report_experiments_eval.md](report_experiments_eval.md) — đánh giá số liệu & định hướng phân tích.  
-- [guide_improvements_v1.2.md](guide_improvements_v1.2.md) — **lệnh cụ thể** cho cải tiến tiếp theo.
+- [guide_improvements_v1.2.md](guide_improvements_v1.2.md) — **lệnh cụ thể** cho cải tiến tiếp theo.  
+- [experiments_and_results.md](experiments_and_results.md) — **Experiments & Results** (setup, bảng tổng hợp sweep α, phân tích cho paper).  
+- [paper_assets/PAPER_INSERT.md](paper_assets/PAPER_INSERT.md) — **Chèn paper:** bảng MD + LaTeX, snippet figure, caption.
 
 ---
 

@@ -1,7 +1,9 @@
 import argparse
 import copy
 import os
+import random
 
+import numpy as np
 import torch
 import torch.nn.functional as F
 import torch.optim as optim
@@ -10,6 +12,15 @@ from models.backbone import get_backbone
 from models.rejector import Rejector
 from utils.pseudo_labels import generate_pseudo_labels
 from utils.losses import compute_spatial_weight_map, localized_surrogate_risk, smoothness_loss
+
+
+def set_seed(seed: int):
+    """Best-effort reproducibility for training (GPU still has minor nondeterminism on some ops)."""
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)
 
 
 def _dice_score(prob, y, eps=1e-5):
@@ -264,18 +275,31 @@ def parse_args():
         default=None,
         help="Load rejector weights before rejector/joint stages (same feature_channels as backbone).",
     )
+    p.add_argument(
+        "--seed",
+        type=int,
+        default=None,
+        help="If set, fixes Python/NumPy/torch RNG and train-loader shuffle for repeatable runs.",
+    )
     return p.parse_args()
 
 
 def main():
     args = parse_args()
+    if args.seed is not None:
+        set_seed(args.seed)
+        print(f"Using random seed: {args.seed}")
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print("Using device:", device)
 
     encoder_weights = None if args.encoder_weights.lower() in ("none", "null", "") else args.encoder_weights
 
     train_loader = get_dataloader(
-        args.data_root, split="train", batch_size=args.batch_size, num_workers=args.num_workers
+        args.data_root,
+        split="train",
+        batch_size=args.batch_size,
+        num_workers=args.num_workers,
+        seed=args.seed,
     )
     val_loader = get_dataloader(
         args.data_root, split="val", batch_size=args.batch_size, num_workers=args.num_workers
