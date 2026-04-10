@@ -38,6 +38,11 @@ class Rejector(nn.Module):
         # We can also add margin: abs(prob - 0.5)
         # However, the paper explicitly lists entropy.
         
+        # DeepLabV3+ decoder features can be lower resolution than prob.
+        # Align spatial size before channel concatenation.
+        if features.shape[-2:] != prob.shape[-2:]:
+            features = F.interpolate(features, size=prob.shape[-2:], mode="bilinear", align_corners=False)
+
         # Concatenate features, probability, and entropy
         x = torch.cat([features, prob, entropy], dim=1)
         

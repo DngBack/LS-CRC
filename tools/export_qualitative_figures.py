@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
-Export qualitative figure panels: RGB (denorm) | GT mask | Prediction | LS-CRC acceptance (score >= tau*).
+Export qualitative LS-CRC panels for papers: image, GT, pred, score heatmap, accept mask,
+and a color-coded **state map** (TP / FP / FN / abstain-on-FG / abstain-on-BG) so errors are easy to see.
 
 Requires the same --checkpoint-dir / backbone flags as evaluate.py. Calibrates tau* on --cal-root, then
 saves PNGs from --test-root in order.
@@ -9,6 +10,7 @@ Example:
   mkdir -p figures/qual_cvc
   python tools/export_qualitative_figures.py \\
     --checkpoint-dir checkpoints_cvc_adapted \\
+    --backbone deeplabv3plus \\
     --encoder-weights imagenet \\
     --cal-root data/CVC-ClinicDB \\
     --test-root data/CVC-ClinicDB \\
@@ -42,6 +44,46 @@ def _denorm_rgb(tchw):
     return torch.clamp(x, 0, 1).cpu().numpy().transpose(1, 2, 0)
 
 
+def _selective_state_rgb(y, pred, accept, blend_rgb=None, blend_alpha=0.22):
+    """
+    Per-pixel semantic coloring for selective prediction (paper-friendly).
+    accept=1: committed region; accept=0: abstain.
+
+    - Green: TP  (accept, pred=1, gt=1)
+    - Red:   FP  (accept, pred=1, gt=0)
+    - Blue:  FN  (accept, pred=0, gt=1) — accepted but missed foreground
+    - Orange: abstain on foreground (gt=1, accept=0) — deferred polyp
+    - Dark gray: abstain on background or TN under accept
+    """
+    y = (y > 0.5).astype(np.bool_)
+    pred = (pred > 0.5).astype(np.bool_)
+    acc = (accept > 0.5).astype(np.bool_)
+    H, W = y.shape
+    rgb = np.zeros((H, W, 3), dtype=np.float32)
+    # TN under acceptance: accept, pred=0, gt=0
+    m = acc & (~pred) & (~y)
+    rgb[m] = (0.07, 0.07, 0.09)
+    # Abstain on background
+    m = (~acc) & (~y)
+    rgb[m] = (0.11, 0.11, 0.13)
+    # Abstain on foreground (important for LS-CRC story)
+    m = (~acc) & y
+    rgb[m] = (1.0, 0.55, 0.05)
+    # Accepted FN / FP / TP
+    m = acc & (~pred) & y
+    rgb[m] = (0.2, 0.45, 1.0)
+    m = acc & pred & (~y)
+    rgb[m] = (0.95, 0.15, 0.2)
+    m = acc & pred & y
+    rgb[m] = (0.15, 0.82, 0.22)
+
+    if blend_rgb is not None and blend_alpha > 0:
+        bg = np.clip(blend_rgb.astype(np.float32), 0, 1)
+        rgb = (1.0 - blend_alpha) * rgb + blend_alpha * bg
+        rgb = np.clip(rgb, 0, 1)
+    return rgb
+
+
 def main():
     p = argparse.ArgumentParser(description="Export qualitative LS-CRC panels to PNG.")
     p.add_argument("--checkpoint-dir", type=str, default="checkpoints")
@@ -63,6 +105,12 @@ def main():
     p.add_argument("--out-dir", type=str, required=True)
     p.add_argument("--prefix", type=str, default="qual", help="Output filenames: {prefix}_{idx:03d}.png")
     p.add_argument("--dpi", type=int, default=150)
+    p.add_argument(
+        "--blend-image-into-state",
+        type=float,
+        default=0.22,
+        help="0=no blend; (0,1] mixes RGB input under the state map for spatial context (default 0.22).",
+    )
     args = p.parse_args()
 
     from data.dataset import get_dataloader
@@ -122,29 +170,46 @@ def main():
                 acc = accept[i, 0].cpu().numpy()
                 sc = scores[i, 0].cpu().numpy()
 
-                fig, axes = plt.subplots(1, 4, figsize=(12, 3))
+                blend = max(0.0, min(1.0, args.blend_image_into_state))
+                state_rgb = _selective_state_rgb(gt, pr, acc, blend_rgb=img, blend_alpha=blend)
+
+                fig, axes = plt.subplots(1, 6, figsize=(18, 3.2))
                 axes[0].imshow(img)
                 axes[0].set_title("Image")
                 axes[0].axis("off")
+
                 axes[1].imshow(gt, cmap="gray", vmin=0, vmax=1)
-                axes[1].set_title("GT")
+                axes[1].set_title("GT mask")
                 axes[1].axis("off")
-                axes[2].imshow(img)
-                axes[2].imshow(pr, cmap="Reds", alpha=0.45, vmin=0, vmax=1)
-                axes[2].set_title("Pred (red)")
+
+                axes[2].imshow(pr, cmap="gray", vmin=0, vmax=1)
+                axes[2].set_title("Pred mask")
                 axes[2].axis("off")
-                axes[3].imshow(img)
-                axes[3].imshow(acc, cmap="Greens", alpha=0.4, vmin=0, vmax=1)
-                axes[3].imshow(sc, cmap="viridis", alpha=0.25, vmin=0, vmax=1)
-                axes[3].set_title("Accept (green) + score")
+
+                im_sc = axes[3].imshow(sc, cmap="magma", vmin=0, vmax=1)
+                axes[3].set_title("Acceptance score")
                 axes[3].axis("off")
+                plt.colorbar(im_sc, ax=axes[3], fraction=0.046, pad=0.02)
+
+                axes[4].imshow(acc, cmap="gray", vmin=0, vmax=1)
+                axes[4].set_title(f"Accept mask (τ={tau_star:.2f})")
+                axes[4].axis("off")
+
+                axes[5].imshow(state_rgb)
+                axes[5].set_title("Selective states")
+                axes[5].axis("off")
+
                 if isinstance(fname, (list, tuple)):
                     name = fname[i]
                 elif isinstance(fname, torch.Tensor):
                     name = str(fname[i].item()) if fname.numel() > 0 else str(saved)
                 else:
                     name = str(fname)
-                fig.suptitle(f"{name} | tau={tau_star:.3f} | alpha={args.alpha}", fontsize=9)
+                leg = (
+                    "Green=TP  Red=FP  Blue=FN(commit)  Orange=abstain|FG  "
+                    "Gray=abstain|BG / TN"
+                )
+                fig.suptitle(f"{name} | τ={tau_star:.3f} | α={args.alpha}\n{leg}", fontsize=8)
                 fig.tight_layout()
                 out_path = os.path.join(args.out_dir, f"{args.prefix}_{saved:03d}.png")
                 fig.savefig(out_path, dpi=args.dpi, bbox_inches="tight")

@@ -1,4 +1,5 @@
 import torch
+import torch.nn.functional as F
 import numpy as np
 from utils.losses import compute_spatial_weight_map, get_localized_selective_loss_components
 
@@ -10,6 +11,8 @@ def evaluate_risk(backbone, rejector, dataloader, device, tau, method="lscrc"):
         'lscrc': using rejector spatial scores >= tau
         'entropy': accept if (1 - norm_entropy) >= tau
         'max_softmax': accept if max(prob, 1-prob) >= tau
+        'standard_crc': global image accept if mean max-prob >= tau (else reject all pixels)
+        'spatial_weighted_cp': accept if blended(max-prob, spatial smoothness of prob) >= tau
     """
     backbone.eval()
     if rejector:
@@ -37,6 +40,24 @@ def evaluate_risk(backbone, rejector, dataloader, device, tau, method="lscrc"):
             elif method == "max_softmax":
                 max_prob = torch.max(prob, 1 - prob)
                 A_u = (max_prob >= tau).float()
+            elif method == "standard_crc":
+                max_prob = torch.max(prob, 1 - prob)
+                conf = max_prob.view(max_prob.size(0), -1).mean(dim=1)
+                accept_image = (conf >= tau).float().view(-1, 1, 1, 1)
+                A_u = accept_image * torch.ones_like(prob)
+            elif method == "spatial_weighted_cp":
+                max_prob = torch.max(prob, 1 - prob)
+                gx = prob[:, :, :, 1:] - prob[:, :, :, :-1]
+                gy = prob[:, :, 1:, :] - prob[:, :, :-1, :]
+                gx = F.pad(gx, (0, 1, 0, 0), mode="replicate")
+                gy = F.pad(gy, (0, 0, 0, 1), mode="replicate")
+                grad_mag = torch.sqrt(gx * gx + gy * gy + 1e-8)
+                gm_flat = grad_mag.view(grad_mag.size(0), -1)
+                gm_max = gm_flat.max(dim=1, keepdim=True).values.clamp(min=1e-8)
+                gm_norm = grad_mag / gm_max.view(grad_mag.size(0), 1, 1, 1)
+                spatial_conf = 1.0 - gm_norm
+                score = 0.5 * max_prob + 0.5 * spatial_conf
+                A_u = (score >= tau).float()
             else:
                 A_u = torch.ones_like(prob)
 
