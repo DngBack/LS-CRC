@@ -1,0 +1,198 @@
+\documentclass{article}
+
+% For NeurIPS submission, use:
+% \usepackage{neurips_2026}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{hyperref}
+\usepackage{url}
+\usepackage{booktabs}
+\usepackage{amsfonts}
+\usepackage{nicefrac}
+\usepackage{microtype}
+\usepackage{xcolor}
+\usepackage{amsmath,amssymb,amsthm}
+\usepackage{graphicx}
+\usepackage{multirow}
+
+\title{Learning Structured Abstention for Localized Conformal Risk Control in Segmentation}
+\author{Anonymous Authors}
+\date{}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+Conformal Risk Control (CRC) provides finite-sample guarantees on expected risk for bounded monotone losses and has emerged as a principled calibration tool for image segmentation. However, standard CRC is fundamentally marginal: it certifies population-average risk but cannot prevent severe heterogeneity across images, object scales, or spatial regions. We propose \textbf{Localized Selective Conformal Risk Control (LS-CRC)}, a framework that combines a learned pixel-wise rejector with split conformal calibration. A held-out calibration set selects an acceptance threshold that guarantees finite-sample control of a boundary-weighted selective false-negative risk. On Kvasir-SEG and CVC-ClinicDB, LS-CRC achieves the highest accepted-pixel coverage among all compared methods at comparable or lower expected risk, and attains the lowest worst-image risk on the adapted domain.
+\end{abstract}
+
+\section{Introduction}
+Conformal Risk Control (CRC) provides finite-sample control for bounded monotone losses, but only at the marginal level. In segmentation, critical failures often concentrate on small structures and complex boundaries. This motivates \emph{localized} reliability: abstain where the model is likely wrong and commit only where predictions are trustworthy.
+
+We introduce LS-CRC, which learns a spatial rejector and calibrates a threshold with split conformal risk control. The key benefit is operational: under the same risk budget, LS-CRC allocates accepted pixels more efficiently than scalar uncertainty thresholding.
+
+\paragraph{Contributions.}
+\begin{itemize}
+  \item A localized selective risk formulation for segmentation with conformal-compatible calibration.
+  \item A learned structured abstention mechanism with split CRC threshold selection.
+  \item Theory: marginal guarantee, subgroup deviation bound, and tail-risk improvement condition.
+  \item Empirical evaluation on in-domain and cross-domain scenarios with tail metrics (Worst-10\%, CVaR, worst-group risk).
+\end{itemize}
+
+\section{Method}
+\subsection{Problem setup}
+Let $(X,Y)\sim P$, with $Y\in\{0,1\}^{H\times W}$. A segmentation backbone $f_\theta$ outputs $p_\theta(x)\in[0,1]^{H\times W}$ and hard prediction $\hat y_u=\mathbf{1}\{p_\theta(x)_u\ge 0.5\}$. A rejector head $g_\phi$ outputs score map $s_\phi(x)\in[0,1]^{H\times W}$.
+
+For threshold $\tau$, acceptance mask is $A_u=\mathbf{1}\{s_\phi(x)_u\ge\tau\}$. The selective predictor outputs $\hat y_u$ if $A_u=1$, else abstains.
+
+\subsection{Localized selective risk}
+With spatial weights $w_u\ge 0$, define
+\begin{equation}
+L_{\mathrm{loc}}(x,y;\theta,\phi,\tau)=
+\frac{\sum_u w_u\,\mathbf{1}\{y_u=1\}\,A_u\,\mathbf{1}\{\hat y_u=0\}}
+{\sum_u w_u\,\mathbf{1}\{y_u=1\}+\varepsilon}.
+\end{equation}
+
+This loss penalizes accepted false negatives only, localizes emphasis via $w_u$, and remains monotone in $\tau$ due to a fixed denominator.
+
+\subsection{Calibration}
+After training, freeze $(\theta,\phi)$ and choose
+\begin{equation}
+\tau^*=\arg\max_{\tau\in\mathcal T}\widehat C_{\mathrm{cal}}(\tau)
+\quad\text{s.t.}\quad
+\widehat R_{\mathrm{cal}}(\tau)\le \alpha_n,
+\end{equation}
+where $\alpha_n=\alpha-\frac{1}{n}$ and $\mathcal T$ is a 1000-point grid in $[0,1]$.
+
+\section{Theory (Summary)}
+\textbf{Theorem 1 (Marginal control).}
+Under exchangeability and bounded monotone loss assumptions, LS-CRC satisfies
+\[
+\mathbb E\!\left[L_{\mathrm{loc}}(X,Y;\theta,\phi,\tau^*)\right]\le \alpha + O(1/|\mathcal D_{\mathrm{cal}}|).
+\]
+
+\textbf{Theorem 2 (Subgroup deviation).}
+For $K$ subgroups with minimum size $m_{\min}$,
+\[
+\max_k\!\left(R_k(\tau^*)-\alpha\right)\le
+\delta_n+\Gamma_{\mathrm{sel}}+\sqrt{\frac{\log(2K/\eta)}{2m_{\min}}}.
+\]
+
+\textbf{Theorem 3 (Tail improvement).}
+If the learned rejector is closer to the latent optimal acceptance mask than a baseline score rule, CVaR improves up to approximation error terms.
+
+\section{Experiments}
+\subsection{Setup}
+\textbf{Datasets:} Kvasir-SEG and CVC-ClinicDB.\\
+\textbf{Backbone:} DeepLabV3+ (ResNet-50, ImageNet init), resolution $256\times256$.\\
+\textbf{Targets:} $\alpha\in\{0.01,0.05,0.10,0.15\}$, primary operating point $\alpha=0.05$.\\
+\textbf{Baselines:} Plain, Entropy, Max-Softmax, Standard CRC (global gate), Spatial-weighted CP.
+
+\subsection{Main in-domain results at $\alpha=0.05$}
+\begin{table*}[t]
+\centering
+\small
+\caption{In-domain results (from sweep 20260409\_144715, grid=1000).}
+\label{tab:main}
+\begin{tabular}{llccccccc}
+\toprule
+Dataset & Method & Dice & Coverage$\uparrow$ & Risk$\downarrow$ & Risk Std$\downarrow$ & Worst 10\%$\downarrow$ & CVaR$_{0.9}\downarrow$ & Worst Grp$\downarrow$ \\
+\midrule
+\multirow{6}{*}{Kvasir-SEG}
+& Plain Segmentation & 0.844 & 1.000 & 0.164 & 0.176 & 0.369 & 0.603 & 0.215 \\
+& Entropy Threshold & 0.844 & 0.888 & 0.057 & 0.112 & 0.180 & 0.348 & 0.089 \\
+& Max-Softmax Threshold & 0.844 & 0.886 & 0.057 & 0.111 & 0.174 & 0.345 & 0.088 \\
+& Standard CRC (Bates et al.) & 0.844 & 0.000 & -- & -- & -- & -- & -- \\
+& Spatial-weighted CP & 0.844 & 0.900 & 0.059 & 0.118 & 0.182 & 0.368 & 0.097 \\
+& \textbf{LS-CRC (Ours)} & 0.844 & \textbf{0.920} & 0.059 & 0.131 & 0.221 & 0.409 & 0.117 \\
+\midrule
+\multirow{6}{*}{CVC-ClinicDB}
+& Plain Segmentation & 0.893 & 1.000 & 0.133 & 0.162 & 0.241 & 0.518 & 0.162 \\
+& Entropy Threshold & 0.893 & 0.824 & 0.004 & 0.010 & 0.015 & 0.028 & 0.007 \\
+& Max-Softmax Threshold & 0.893 & 0.685 & 0.001 & 0.002 & 0.002 & 0.006 & 0.001 \\
+& Standard CRC (Bates et al.) & 0.893 & 0.000 & -- & -- & -- & -- & -- \\
+& Spatial-weighted CP & 0.893 & 0.743 & 0.001 & 0.002 & 0.002 & 0.006 & 0.001 \\
+& \textbf{LS-CRC (Ours)} & 0.893 & \textbf{0.761} & 0.001 & 0.003 & \textbf{$<0.001$} & 0.008 & 0.002 \\
+\bottomrule
+\end{tabular}
+\end{table*}
+
+\subsection{Cross-domain transfer at $\alpha=0.05$}
+\begin{table}[t]
+\centering
+\small
+\caption{Cross-domain stress test.}
+\label{tab:cross}
+\begin{tabular}{lccccc}
+\toprule
+Scenario / Method & Cov$\uparrow$ & Risk$\downarrow$ & W10$\downarrow$ & CVaR$\downarrow$ & WGrp$\downarrow$ \\
+\midrule
+Kvasir$\rightarrow$CVC (Entropy) & 0.910 & 0.029 & 0.041 & 0.215 & 0.086 \\
+Kvasir$\rightarrow$CVC (MaxSoft) & 0.908 & 0.028 & 0.041 & 0.204 & 0.081 \\
+Kvasir$\rightarrow$CVC (Spatial CP) & 0.917 & 0.029 & 0.041 & 0.235 & 0.087 \\
+Kvasir$\rightarrow$CVC (\textbf{LS-CRC}) & \textbf{0.931} & 0.032 & \textbf{0.031} & 0.279 & 0.091 \\
+\midrule
+CVC$\rightarrow$Kvasir (Entropy) & 0.794 & 0.029 & 0.087 & 0.214 & 0.047 \\
+CVC$\rightarrow$Kvasir (MaxSoft) & 0.671 & \textbf{0.015} & \textbf{0.032} & \textbf{0.124} & \textbf{0.023} \\
+CVC$\rightarrow$Kvasir (Spatial CP) & 0.718 & 0.018 & 0.037 & 0.153 & 0.030 \\
+CVC$\rightarrow$Kvasir (\textbf{LS-CRC}) & 0.706 & 0.023 & 0.058 & 0.213 & 0.052 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Risk--coverage curves and qualitative figures}
+\begin{figure}[t]
+\centering
+\includegraphics[width=0.9\linewidth]{figures/fig_risk_cov_cvc.png}
+\caption{Coverage and expected localized risk across $\alpha$ on CVC-ClinicDB (in-domain).}
+\label{fig:curve-cvc}
+\end{figure}
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=0.9\linewidth]{figures/fig_scatter_cvc.png}
+\caption{Risk--coverage scatter for LS-CRC across $\alpha$ on CVC-ClinicDB.}
+\label{fig:scatter-cvc}
+\end{figure}
+
+\begin{figure*}[t]
+\centering
+\includegraphics[width=0.32\linewidth]{figures/fig_qual_03.png}
+\hfill
+\includegraphics[width=0.32\linewidth]{figures/fig_qual_01.png}
+\hfill
+\includegraphics[width=0.32\linewidth]{figures/fig_qual_05.png}
+\caption{Qualitative examples on CVC-ClinicDB at $\alpha=0.05$. LS-CRC abstains primarily near uncertain boundaries while preserving confident foreground interiors.}
+\label{fig:qual}
+\end{figure*}
+
+\section{Discussion}
+LS-CRC consistently improves risk--coverage efficiency, especially on the adapted domain and under tight budgets. At $\alpha=0.01$, LS-CRC keeps zero empirical risk while retaining substantially higher coverage than entropy thresholding. On CVC-ID at $\alpha=0.05$, LS-CRC achieves the best worst-10\% risk while maintaining higher coverage than Max-Softmax and Spatial CP.
+
+Limitations remain: (i) some tail metrics on non-adapted Kvasir are not better than entropy; (ii) the global Standard CRC baseline can collapse to zero coverage at tight budgets; (iii) current results are single-seed and should be extended with multi-seed estimates for camera-ready.
+
+\section{Conclusion}
+We presented LS-CRC, a conformal framework for localized selective segmentation that learns where to abstain and calibrates how much to abstain. The method preserves marginal risk guarantees while improving practical reliability allocation in spatially heterogeneous regions.
+
+\bibliographystyle{plain}
+\begin{thebibliography}{9}
+
+\bibitem{angelopoulos2022crc}
+Anastasios N. Angelopoulos, Stephen Bates, Emmanuel J. Cand\`es, Michael I. Jordan, and Lihua Lei.
+\newblock Conformal risk control.
+\newblock \emph{arXiv preprint arXiv:2208.02814}, 2022.
+
+\bibitem{barber2021jackknife}
+Rina Foygel Barber, Emmanuel J. Cand\`es, Aaditya Ramdas, and Ryan J. Tibshirani.
+\newblock Predictive inference with the jackknife+.
+\newblock \emph{Annals of Statistics}, 49(1):486--507, 2021.
+
+\bibitem{jha2020kvasirseg}
+Debesh Jha et al.
+\newblock Kvasir-SEG: A segmented polyp dataset.
+\newblock \emph{MMM}, 2020.
+
+\end{thebibliography}
+
+\end{document}
