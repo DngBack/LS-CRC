@@ -2,8 +2,6 @@
 
 **Anonymous Authors**
 
-*Submitted to the Fortieth Conference on Neural Information Processing Systems (NeurIPS 2026)*
-
 ---
 
 ## Abstract
@@ -376,7 +374,7 @@ The primary criterion is the risk–coverage tradeoff under the localized select
 
 All tables below use **boundary-weighted localized selective miss risk** on the test split, with threshold \(\tau^*\) chosen on the held-out calibration set so that empirical calibration risk satisfies the finite-sample corrected CRC target (1000-point grid in \([0,1]\)). The **primary operating point** is \(\alpha = 0.05\). Dice is identical across selective methods because they share the same frozen backbone. **Standard CRC** denotes a **global image-level** gate (Bates et al.–style risk-controlling prediction sets applied at image level); at \(\alpha = 0.05\) it yields **zero accepted coverage** on our polyp splits—a useful illustration of the mismatch between image-level gating and pixel-level selective risk, not an implementation error.
 
-**Reproducibility.** Numbers are from a single training run (checkpoint `cvc_adapted`, grid 1000); multi-seed means \(\pm\) std are planned for the camera-ready version.
+**Reproducibility status.** Main results currently use one training seed (checkpoint `cvc_adapted`, 1000-point threshold grid). This is sufficient for a pilot empirical claim on frontier shape, but not for a final NeurIPS claim about variance robustness; multi-seed mean \(\pm\) std is required for the final version.
 
 ---
 
@@ -479,44 +477,75 @@ The learned score map typically peaks in the **polyp interior**, grades down tow
 
 ---
 
-### 8.5 Ablations and components (planned / projected)
+### 8.5 Ablations and components
 
-**Table 4** summarizes the **expected** role of each training ingredient; **rows with \(\sim\)** should be replaced by measured ablations in the camera-ready paper. The full LS-CRC row matches Table 1 (CVC-ID, \(\alpha = 0.05\)).
+**Table 4** reports measured comparisons for available variants and clearly marks runs that are not yet executed. Main-paper claims in this draft rely only on measured rows.
 
 | Variant | Learned rej. | Boundary wt. | Smooth | Joint FT | Coverage | Risk | Worst 10% |
 |:---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
 | A: Image-level CRC gate | No | No | No | No | 0.000 | 0.000 | — |
 | B: Entropy + CRC calibration | No | No | No | No | 0.824 | 0.004 | 0.015 |
-| C: Rejector, no boundary weight | Yes | No | No | No | ~0.74 | ~0.002 | ~0.003 |
-| D: + Boundary weighting | Yes | Yes | No | No | ~0.73 | ~0.001 | ~0.001 |
-| E: + Smoothness (no joint FT) | Yes | Yes | Yes | No | ~0.75 | ~0.001 | ~<0.001 |
+| C: Rejector, no boundary weight | Yes | No | No | No | N/A (run pending) | N/A | N/A |
+| D: + Boundary weighting | Yes | Yes | No | No | N/A (run pending) | N/A | N/A |
+| E: + Smoothness (no joint FT) | Yes | Yes | Yes | No | N/A (run pending) | N/A | N/A |
 | **F: Full LS-CRC** | Yes | Yes | Yes | Yes | **0.761** | **0.001** | **<0.001** |
 
-**Interpretation.** **Boundary weighting** focuses the risk functional on clinically salient bands, enabling a **more permissive** threshold for the same \(\alpha\). **TV smoothness** reduces isolated “speckle” acceptance errors. **Joint fine-tuning** aligns backbone features with the rejector objective and is expected to yield **\(\sim\)1%** extra coverage versus stage-wise training. **CRC calibration** is what converts a learned score into a **deployment guarantee**; validation-tuned thresholds are not interchangeable if finite-sample control is required.
+**Interpretation.** The measured rows show that structured selective calibration (row F) improves coverage over scalar-threshold baselines at low risk on CVC-ID. The pending rows C–E are included only to make the intended ablation design explicit; no claim in this draft depends on them. **CRC calibration** converts a learned score into a finite-sample marginal guarantee; validation-tuned thresholds are not interchangeable when a formal guarantee is required.
 
 Additional runs to include in the supplement: (i) remove localized risk surrogate \(\mathcal{L}_{\mathrm{loc-sur}}\); (ii) learned rejector **without** CRC (validation threshold only); (iii) calibration vs. test risk diagnostic plots.
 
 ---
 
-## 9. Discussion
+## 9. Limitations
 
-The main lesson of LS-CRC is that the efficiency of conformal risk control depends strongly on the family it calibrates. CRC itself only selects a threshold inside a fixed monotone family. If that family is induced by a crude scalar uncertainty score, risk may be spent inefficiently. By learning a spatially structured acceptor, LS-CRC gives calibration a better operating family and therefore a better final predictor.
+LS-CRC has four material limitations.
 
-At the same time, the method has clear limitations.
+**(1) Marginal guarantee only.** The theorem controls expected localized selective risk at the population level; it does not provide distribution-free conditional guarantees per image, per subgroup, or per pixel.
 
-**First**, the guarantee remains marginal. We do not obtain distribution-free subgroup or image-conditional guarantees.
+**(2) Exchangeability dependence.** Split CRC validity assumes calibration and test exchangeability. Cross-domain transfer results are therefore diagnostics and should not be interpreted as guaranteed operating points.
 
-**Second**, cross-domain experiments lie outside the classical exchangeable setting. They are useful stress tests, but they should not be described as guaranteed calibration regimes.
+**(3) Current scope.** The present formulation targets binary segmentation and false-negative selective risk. Multiclass extension requires class-conditional acceptance design and potentially multi-objective calibration.
 
-**Third**, the current formulation is binary and focused on false-negative selective risk. Extension to multiclass segmentation will require class-aware acceptance logic and more careful loss design.
-
-**Fourth**, the quality of the learned rejector matters substantially. The theoretical guarantee survives even with a weak rejector, but the practical risk–coverage efficiency gain may disappear.
-
-These limitations should be stated plainly in a NeurIPS submission. The strength of the paper is not in overstating guarantees, but in cleanly separating what calibration certifies from what learning contributes.
+**(4) Empirical maturity.** Results currently include a single-seed primary run and partial ablations. Final claims about robustness require multi-seed statistics and completion of all ablation rows.
 
 ---
 
-## 10. Conclusion
+## 10. Broader Impact and Responsible Use
+
+The method can improve reliability in safety-relevant segmentation workflows by deferring uncertain pixels instead of forcing hard predictions everywhere. This can reduce harmful misses on difficult boundary regions and make model uncertainty more actionable.
+
+Potential risks remain. Selective systems can hide errors if users interpret abstention as correctness, and subgroup disparities may persist under marginal calibration. Deployment should therefore include explicit abstention visualization, user training on deferred outputs, and subgroup monitoring.
+
+No human-subject experiments are reported. The datasets used are standard public medical-imaging benchmarks, and use should follow each dataset license and usage terms.
+
+---
+
+## 11. Reproducibility and Compute
+
+This draft includes the details needed to reproduce the current pipeline structure and calibration protocol:
+- dataset names and split discipline (train/val/cal/test disjoint);
+- architecture family (DeepLabV3+ backbone + convolutional rejector);
+- optimization setup (AdamW, learning rate, weight decay, epochs, batch size);
+- selective loss definition and threshold-grid calibration procedure;
+- evaluation metrics including risk, coverage, CVaR, and subgroup summaries.
+
+For a submission-ready artifact, the following must be reported as concrete values in this section and the checklist:
+- random seed list and number of runs per table;
+- hardware type (GPU/CPU), memory, and wall-clock training time;
+- software versions and deterministic flags where used;
+- exact commands/config files used to generate each table/figure.
+
+---
+
+## 12. Discussion
+
+The central empirical message is that conformal calibration quality depends on the predictor family being calibrated. CRC can enforce a marginal risk budget, but efficiency on the risk-coverage frontier is determined by how well the underlying score map aligns with true error concentration. LS-CRC improves this family via learned structured abstention.
+
+This separation between **what calibration certifies** and **what learning contributes** is the key framing for a careful NeurIPS submission: guarantees should be stated narrowly, while performance gains should be supported by complete and reproducible evidence.
+
+---
+
+## 13. Conclusion
 
 We introduced LS-CRC, a framework for learned structured abstention under conformal risk control in image segmentation. The method combines a pixel-wise rejector with split conformal threshold calibration, using a localized selective miss loss designed to remain bounded and monotone. This gives a clean guarantee: LS-CRC inherits the marginal CRC risk-control theorem while learning where the model should abstain. Empirically, the method improves the selective risk–coverage frontier on polyp segmentation benchmarks and shows especially strong worst-image behavior on the adapted domain.
 
@@ -562,19 +591,23 @@ The method does not attempt to guarantee per-image or subgroup-selective risk in
 
 ---
 
-## Appendix B. Reproducibility checklist material
+## Appendix B. NeurIPS checklist draft notes
 
-A NeurIPS-ready version of this paper should include:
-- exact dataset splits,
-- preprocessing and augmentation details,
-- architecture specification of the rejector,
-- hyperparameter table,
-- calibration grid definition,
-- seed count and seed values,
-- hardware and runtime,
-- code release statement,
-- all ablation protocols,
-- failure cases and limitations.
+Use the following concise justifications when filling the official NeurIPS checklist form.
+
+1. **Claims.** Main claims are restricted to marginal CRC guarantee and measured risk-coverage/tail behavior on listed datasets.
+2. **Limitations.** Section 9 explicitly states marginal-only validity, exchangeability dependence, scope limits, and incomplete ablations/seeds.
+3. **Theory assumptions.** Assumptions A1-A4 are stated in Section 6.1 and used directly in Theorem 1.
+4. **Experimental reproducibility.** Data protocol, models, optimization, calibration, and metrics are specified; full command-level configs should be added in the supplementary ZIP.
+5. **Hyperparameters and selection.** Hyperparameters are selected on validation only; calibration split is isolated from tuning.
+6. **Statistical reporting.** Current draft is single-seed; final version must report multi-seed mean and standard deviation (or confidence intervals).
+7. **Compute.** Final version must report hardware, memory, runtime, and software stack.
+8. **Data usage and licenses.** Public benchmark datasets are used; final version should cite licenses/terms explicitly.
+9. **Broader impacts.** Section 10 includes intended benefit, failure modes, and safeguards.
+10. **Ethics compliance.** Work follows NeurIPS Code of Ethics; no human-subject studies are conducted in this paper.
+11. **Human participants.** Not applicable.
+12. **Artifacts release.** Code/config release plan should be stated at submission time (anonymous repository if available).
+13. **Generative AI usage.** No LLM is part of the proposed method; any writing assistance does not affect scientific results.
 
 ---
 
@@ -582,9 +615,9 @@ A NeurIPS-ready version of this paper should include:
 
 1. ~~Replace placeholder results with quantitative tables and figures.~~ (Main tables, curves, and qualitative panels are in §8; paths are relative to `paper_draft/`.)
 2. Add true multi-seed mean \(\pm\) standard deviation results (currently single-seed run).
-3. Replace projected ablation rows (Table 4, rows C–E) with measured numbers.
+3. Replace pending ablation rows (Table 4, rows C–E) with measured numbers.
 4. Add calibration-versus-test risk diagnostic plots in the supplement.
-5. Expand references with final bibliographic metadata.
-6. Align terminology consistently: accepted-pixel coverage versus accepted-foreground coverage.
-7. Ensure every sentence in §1–§7 remains consistent with measured §8 numbers after any rerun.
+5. Expand references with full bibliographic metadata in NeurIPS format (authors, venue, year, pages/DOI where available).
+6. Add hardware/runtime/software stack details in Section 11 and checklist.
+7. Ensure every sentence in §1–§8 remains consistent with measured numbers after reruns.
 
